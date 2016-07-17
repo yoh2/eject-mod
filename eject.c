@@ -17,13 +17,10 @@
 MODULE_LICENSE("GPL");
 
 static char targetdev[80] = "/dev/sr0";
-module_param_string(dev, targetdev, sizeof(targetdev), 0400);
+module_param_string(dev, targetdev, sizeof(targetdev), 0600);
 MODULE_PARM_DESC(dev, "Target device file to be ejected");
 
 #define DEV_NAME "eject"
-
-struct file *eject_target_file;
-
 
 static loff_t eject_llseek(struct file *file, loff_t offset, int whence)
 {
@@ -48,7 +45,15 @@ static ssize_t eject_write(struct file *file, const char __user *buf,
 
 static int eject_open(struct inode *inode, struct file *filp)
 {
-	int err;
+	int err = 0;
+	struct file *eject_target_file;
+	long (*ioctl)(struct file *, unsigned int, unsigned long);
+
+	eject_target_file = filp_open(targetdev, O_RDWR | O_NONBLOCK, 0);
+	if (IS_ERR(eject_target_file)) {
+		printk(KERN_ALERT "failed to open file %s. err = %ld", targetdev, PTR_ERR(eject_target_file));
+		return PTR_ERR(eject_target_file);
+	}
 
 	/*
 	 * NOTE:
@@ -57,34 +62,31 @@ static int eject_open(struct inode *inode, struct file *filp)
 	 * Is there any other formal way to do it?
 	 */
 
-	long (*ioctl)(struct file *, unsigned int, unsigned long);
 	if (eject_target_file->f_op->unlocked_ioctl != NULL) {
 		ioctl = eject_target_file->f_op->unlocked_ioctl;
 	} else if (eject_target_file->f_op->compat_ioctl != NULL) {
 		ioctl = eject_target_file->f_op->compat_ioctl;
 	} else {
 		/* Inappropriate ioctl */
-		return -ENOTTY;
+		err = -ENOTTY;
+		goto out;
 	}
 
-	printk(KERN_INFO "opened.\n");
 	err = ioctl(eject_target_file, CDROM_LOCKDOOR, 0);
 	if (err != 0) {
 		printk(KERN_ALERT "failed to unlock the tray: %d\n", err);
-		return err;
+		goto out;
 	}
 	err = ioctl(eject_target_file, CDROMEJECT, 0);
 	if (err != 0) {
 		printk(KERN_ALERT "failed to eject the tray: %d\n", err);
-		return err;
+		goto out;
 	}
-	return 0;
-}
 
-static int eject_release(struct inode *inode, struct file *filp)
-{
-	printk(KERN_INFO "released.\n");
-	return 0;
+out:
+	filp_close(eject_target_file, 0);
+
+	return err;
 }
 
 static const struct file_operations eject_fops = {
@@ -93,7 +95,6 @@ static const struct file_operations eject_fops = {
 	.read    = eject_read,
 	.write   = eject_write,
 	.open    = eject_open,
-	.release = eject_release,
 };
 
 static struct miscdevice eject_dev = {
@@ -112,19 +113,11 @@ static int __init eject_init(void)
 		return err;
 	}
 
-	printk(KERN_INFO "attaching file %s...", targetdev);
-	eject_target_file = filp_open(targetdev, O_RDWR | O_NONBLOCK, 0);
-	if (IS_ERR(eject_target_file)) {
-		printk(KERN_ALERT "failed to attach file %s. err = %ld", targetdev, PTR_ERR(eject_target_file));
-		misc_deregister(&eject_dev);
-		return PTR_ERR(eject_target_file);
-	}
 	return 0;
 }
 
 static void __exit eject_exit(void)
 {
-	filp_close(eject_target_file, 0);
 	misc_deregister(&eject_dev);
 }
 
