@@ -16,4 +16,3 @@ clean:
 
 install:
 	$(MAKE) -C $(KERNELDIR) M=`pwd` modules_install
-	depmod -a
