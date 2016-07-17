@@ -1,1 +1,2 @@
 SUBSYSTEM=="misc", KERNEL=="eject", MODE="0660", GROUP="cdrom"
+SUBSYSTEM=="misc", KERNEL=="cdtray", MODE="0660", GROUP="cdrom"
