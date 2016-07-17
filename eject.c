@@ -44,7 +44,26 @@ static ssize_t eject_write(struct file *file, const char __user *buf,
 	return count;
 }
 
-static int eject_get_ioctl(struct file **filp, long (**ioctl)(struct file *, unsigned int, unsigned long))
+
+long (*eject_get_ioctl(struct file *filp))(struct file *, unsigned int, unsigned long)
+{
+	/*
+	 * NOTE:
+	 * I use a member of file_operations directly
+	 * to perform ioctl() operation.
+	 * Is there any other formal way to do it?
+	 */
+
+	if (filp->f_op->unlocked_ioctl != NULL) {
+		return filp->f_op->unlocked_ioctl;
+	} else if (filp->f_op->compat_ioctl != NULL) {
+		return filp->f_op->compat_ioctl;
+	} else {
+		return NULL;
+	}
+}
+
+static int eject_open_and_get_ioctl(struct file **filp, long (**ioctl)(struct file *, unsigned int, unsigned long))
 {
 	*filp = NULL;
 	*ioctl = NULL;
@@ -57,18 +76,8 @@ static int eject_get_ioctl(struct file **filp, long (**ioctl)(struct file *, uns
 		return err;
 	}
 
-	/*
-	 * NOTE:
-	 * I use a member of file_operations directly
-	 * to perform ioctl() operation.
-	 * Is there any other formal way to do it?
-	 */
-
-	if ((*filp)->f_op->unlocked_ioctl != NULL) {
-		*ioctl = (*filp)->f_op->unlocked_ioctl;
-	} else if ((*filp)->f_op->compat_ioctl != NULL) {
-		*ioctl = (*filp)->f_op->compat_ioctl;
-	} else {
+	*ioctl = eject_get_ioctl(*filp);
+	if (*ioctl == NULL) {
 		/* Inappropriate ioctl */
 		filp_close(*filp, 0);
 		*filp = NULL;
@@ -78,13 +87,15 @@ static int eject_get_ioctl(struct file **filp, long (**ioctl)(struct file *, uns
 	return 0;
 }
 
+
+
 static int eject_open(struct inode *inode, struct file *filp)
 {
 	int err = 0;
 	struct file *eject_target_file;
 	long (*ioctl)(struct file *, unsigned int, unsigned long);
 
-	err = eject_get_ioctl(&eject_target_file, &ioctl);
+	err = eject_open_and_get_ioctl(&eject_target_file, &ioctl);
 	if (err != 0) {
 		return err;
 	}
@@ -105,15 +116,51 @@ out:
 	return err;
 }
 
-static int eject_release(struct inode *inode, struct file *filp)
+static int cdtray_open(struct inode *inode, struct file *filp)
 {
 	int err = 0;
 	struct file *eject_target_file;
 	long (*ioctl)(struct file *, unsigned int, unsigned long);
 
-	err = eject_get_ioctl(&eject_target_file, &ioctl);
+	filp->private_data = NULL;
+
+	err = eject_open_and_get_ioctl(&eject_target_file, &ioctl);
 	if (err != 0) {
 		return err;
+	}
+
+	err = ioctl(eject_target_file, CDROM_LOCKDOOR, 0);
+	if (err != 0) {
+		printk(KERN_ALERT "failed to unlock the tray: err = %d\n", err);
+		filp_close(eject_target_file, 0);
+		return err;
+	}
+	err = ioctl(eject_target_file, CDROMEJECT, 0);
+	if (err != 0) {
+		printk(KERN_ALERT "failed to eject the tray: err = %d\n", err);
+		filp_close(eject_target_file, 0);
+		return err;
+	}
+
+	filp->private_data = eject_target_file;
+	return 0;
+}
+
+static int cdtray_release(struct inode *inode, struct file *filp)
+{
+	int err = 0;
+	struct file *eject_target_file;
+	long (*ioctl)(struct file *, unsigned int, unsigned long);
+
+	printk(KERN_INFO "private data = %p", filp->private_data);
+	eject_target_file = (struct file *)filp->private_data;
+	if (eject_target_file == NULL) {
+		return 0;
+	}
+
+	ioctl = eject_get_ioctl(eject_target_file);
+	if (ioctl == NULL) {
+		goto out;
 	}
 
 	err = ioctl(eject_target_file, CDROMCLOSETRAY, 0);
@@ -142,8 +189,8 @@ static const struct file_operations cdtray_fops = {
 	.llseek  = eject_llseek,
 	.read    = eject_read,
 	.write   = eject_write,
-	.open    = eject_open,
-	.release = eject_release,
+	.open    = cdtray_open,
+	.release = cdtray_release,
 };
 
 static struct miscdevice eject_dev = {
