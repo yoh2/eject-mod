@@ -72,7 +72,7 @@ static int eject_open_and_get_ioctl(struct file **filp, long (**ioctl)(struct fi
 	if (IS_ERR(*filp)) {
 		int err = PTR_ERR(*filp);
 		*filp = NULL;
-		printk(KERN_ALERT "failed to open file %s. err = %d", targetdev, err);
+		printk(KERN_ALERT "eject: failed to open file %s. err = %d", targetdev, err);
 		return err;
 	}
 
@@ -102,12 +102,12 @@ static int eject_open(struct inode *inode, struct file *filp)
 
 	err = ioctl(eject_target_file, CDROM_LOCKDOOR, 0);
 	if (err != 0) {
-		printk(KERN_ALERT "failed to unlock the tray: err = %d\n", err);
+		printk(KERN_ALERT "eject: failed to unlock the tray: err = %d\n", err);
 		goto out;
 	}
 	err = ioctl(eject_target_file, CDROMEJECT, 0);
 	if (err != 0) {
-		printk(KERN_ALERT "failed to eject the tray: err = %d\n", err);
+		printk(KERN_ALERT "eject: failed to eject the tray: err = %d\n", err);
 		goto out;
 	}
 
@@ -131,13 +131,13 @@ static int cdtray_open(struct inode *inode, struct file *filp)
 
 	err = ioctl(eject_target_file, CDROM_LOCKDOOR, 0);
 	if (err != 0) {
-		printk(KERN_ALERT "failed to unlock the tray: err = %d\n", err);
+		printk(KERN_ALERT "eject: failed to unlock the tray: err = %d\n", err);
 		filp_close(eject_target_file, 0);
 		return err;
 	}
 	err = ioctl(eject_target_file, CDROMEJECT, 0);
 	if (err != 0) {
-		printk(KERN_ALERT "failed to eject the tray: err = %d\n", err);
+		printk(KERN_ALERT "eject: failed to eject the tray: err = %d\n", err);
 		filp_close(eject_target_file, 0);
 		return err;
 	}
@@ -152,7 +152,6 @@ static int cdtray_release(struct inode *inode, struct file *filp)
 	struct file *eject_target_file;
 	long (*ioctl)(struct file *, unsigned int, unsigned long);
 
-	printk(KERN_INFO "private data = %p", filp->private_data);
 	eject_target_file = (struct file *)filp->private_data;
 	if (eject_target_file == NULL) {
 		return 0;
@@ -165,7 +164,7 @@ static int cdtray_release(struct inode *inode, struct file *filp)
 
 	err = ioctl(eject_target_file, CDROMCLOSETRAY, 0);
 	if (err != 0) {
-		printk(KERN_ALERT "failed to close the tray: err = %d\n", err);
+		printk(KERN_ALERT "eject: failed to close the tray: err = %d\n", err);
 		goto out;
 	}
 
@@ -213,13 +212,13 @@ static int __init eject_init(void)
 
 	err = misc_register(&eject_dev);
 	if (err != 0) {
-		printk(KERN_ALERT "failed to register an eject device, err = %d\n", err);
+		printk(KERN_ALERT "eject: failed to register an eject device, err = %d\n", err);
 		return err;
 	}
 
 	err = misc_register(&cdtray_dev);
 	if (err != 0) {
-		printk(KERN_ALERT "failed to register an eject device, err = %d\n", err);
+		printk(KERN_ALERT "eject: failed to register an eject device, err = %d\n", err);
 		misc_deregister(&eject_dev);
 		return err;
 	}
