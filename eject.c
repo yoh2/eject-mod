@@ -45,7 +45,7 @@ static ssize_t eject_write(struct file *file, const char __user *buf,
 }
 
 
-long (*eject_get_ioctl(struct file *filp))(struct file *, unsigned int, unsigned long)
+static long (*eject_get_ioctl(struct file *filp))(struct file *, unsigned int, unsigned long)
 {
 	/*
 	 * NOTE:
@@ -86,8 +86,6 @@ static int eject_open_and_get_ioctl(struct file **filp, long (**ioctl)(struct fi
 
 	return 0;
 }
-
-
 
 static int eject_open(struct inode *inode, struct file *filp)
 {
