@@ -11,7 +11,7 @@
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/file.h>
-#include <uapi/linux/cdrom.h>
+#include <linux/cdrom.h>
 
 
 MODULE_LICENSE("GPL");
